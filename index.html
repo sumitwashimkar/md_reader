@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Markdown Reader</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=DM+Mono:wght@400;500&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<style>
+  :root {
+    --ink: #1a1208;
+    --paper: #f5f0e8;
+    --cream: #ede8db;
+    --accent: #c0392b;
+    --accent-muted: #e8c9c6;
+    --mid: #8a7f72;
+    --border: #d4cfc5;
+    --code-bg: #2b2520;
+    --code-fg: #e8dcc8;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Lora', Georgia, serif;
+    background: var(--paper);
+    color: var(--ink);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ── */
+  header {
+    border-bottom: 2px solid var(--ink);
+    padding: 18px 32px;
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    background: var(--paper);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  header h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  header span {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.68rem;
+    color: var(--mid);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .header-dot {
+    width: 8px; height: 8px;
+    background: var(--accent);
+    border-radius: 50%;
+    margin-left: auto;
+    flex-shrink: 0;
+    animation: pulse 2.4s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.7); }
+  }
+
+  /* ── Layout ── */
+  main {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Input pane ── */
+  .input-pane {
+    border-right: 1.5px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    background: var(--cream);
+  }
+
+  .pane-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.62rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--mid);
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .upload-zone {
+    border: 1.5px dashed var(--border);
+    margin: 16px;
+    border-radius: 6px;
+    padding: 18px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--paper);
+    flex-shrink: 0;
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--accent);
+    background: var(--accent-muted);
+  }
+  .upload-zone input { display: none; }
+  .upload-zone p {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--mid);
+    pointer-events: none;
+  }
+  .upload-zone strong {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--accent);
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  textarea {
+    flex: 1;
+    resize: none;
+    border: none;
+    background: transparent;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.82rem;
+    line-height: 1.7;
+    color: var(--ink);
+    padding: 16px 20px;
+    outline: none;
+    min-height: 300px;
+  }
+  textarea::placeholder { color: var(--mid); }
+
+  .action-row {
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .btn {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    border: 1.5px solid var(--ink);
+    background: transparent;
+    color: var(--ink);
+    padding: 5px 14px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn:hover { background: var(--ink); color: var(--paper); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: #a93226; border-color: #a93226; }
+  .char-count {
+    margin-left: auto;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--mid);
+  }
+
+  /* ── Preview pane ── */
+  .preview-pane {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .preview-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 28px 36px 48px;
+  }
+  .preview-scroll::-webkit-scrollbar { width: 5px; }
+  .preview-scroll::-webkit-scrollbar-track { background: transparent; }
+  .preview-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--mid);
+    gap: 10px;
+    padding: 40px;
+    text-align: center;
+  }
+  .empty-state svg { opacity: 0.25; }
+  .empty-state p {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+  }
+
+  /* ── Rendered Markdown ── */
+  .md-content { max-width: 680px; animation: fadeIn 0.3s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+  .md-content h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: 2.1rem;
+    font-weight: 700;
+    line-height: 1.2;
+    margin-bottom: 16px;
+    letter-spacing: -0.02em;
+  }
+  .md-content h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.45rem;
+    font-weight: 700;
+    margin-top: 36px;
+    margin-bottom: 12px;
+    padding-bottom: 6px;
+    border-bottom: 1.5px solid var(--border);
+  }
+  .md-content h3 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin-top: 28px;
+    margin-bottom: 10px;
+    color: var(--accent);
+  }
+  .md-content h4, .md-content h5, .md-content h6 {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    margin-top: 24px;
+    margin-bottom: 8px;
+    color: var(--mid);
+  }
+  .md-content p { line-height: 1.85; margin-bottom: 16px; font-size: 1rem; }
+  .md-content strong { font-weight: 600; }
+  .md-content em { font-style: italic; color: #4a3f32; }
+  .md-content a { color: var(--accent); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  .md-content a:hover { color: #a93226; }
+  .md-content ul, .md-content ol { padding-left: 24px; margin-bottom: 16px; }
+  .md-content li { line-height: 1.75; margin-bottom: 4px; }
+  .md-content blockquote {
+    border-left: 3px solid var(--accent);
+    margin: 24px 0;
+    padding: 12px 20px;
+    background: var(--cream);
+    border-radius: 0 4px 4px 0;
+    font-style: italic;
+    color: #5a4e40;
+  }
+  .md-content blockquote p { margin: 0; }
+  .md-content code {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.82em;
+    background: var(--cream);
+    border: 1px solid var(--border);
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+  .md-content pre {
+    background: var(--code-bg);
+    border-radius: 6px;
+    padding: 20px 22px;
+    overflow-x: auto;
+    margin: 20px 0;
+  }
+  .md-content pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--code-fg);
+    font-size: 0.83rem;
+    line-height: 1.65;
+  }
+  .md-content hr {
+    border: none;
+    border-top: 1.5px solid var(--border);
+    margin: 32px 0;
+  }
+  .md-content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+    font-size: 0.9rem;
+  }
+  .md-content th {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    background: var(--cream);
+    border: 1px solid var(--border);
+    padding: 9px 14px;
+    text-align: left;
+  }
+  .md-content td {
+    border: 1px solid var(--border);
+    padding: 9px 14px;
+  }
+  .md-content tr:hover td { background: var(--cream); }
+  .md-content img { max-width: 100%; border-radius: 4px; margin: 12px 0; }
+
+  /* ── Responsive ── */
+  @media (max-width: 760px) {
+    main { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+    .input-pane { border-right: none; border-bottom: 1.5px solid var(--border); }
+    textarea { min-height: 180px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Markdown Reader</h1>
+  <span>v1.0</span>
+  <div class="header-dot"></div>
+</header>
+
+<main>
+  <!-- Input Pane -->
+  <section class="input-pane">
+    <div class="pane-label">
+      <span>Input</span>
+      <span id="fileNameLabel">— no file loaded —</span>
+    </div>
+
+    <label class="upload-zone" id="dropZone">
+      <input type="file" id="fileInput" accept=".md,.markdown,.txt" />
+      <strong>↑ Upload .md file</strong>
+      <p>or drag & drop here</p>
+    </label>
+
+    <textarea id="editor" placeholder="…or paste your Markdown here and watch it render live on the right."></textarea>
+
+    <div class="action-row">
+      <button class="btn primary" onclick="copyToClipboard()">Copy HTML</button>
+      <button class="btn" onclick="clearAll()">Clear</button>
+      <span class="char-count" id="charCount">0 chars</span>
+    </div>
+  </section>
+
+  <!-- Preview Pane -->
+  <section class="preview-pane">
+    <div class="pane-label">
+      <span>Preview</span>
+      <span id="wordCount">0 words</span>
+    </div>
+    <div class="preview-scroll" id="previewScroll">
+      <div class="empty-state" id="emptyState">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="8" y="6" width="32" height="36" rx="3"/>
+          <line x1="15" y1="16" x2="33" y2="16"/>
+          <line x1="15" y1="22" x2="33" y2="22"/>
+          <line x1="15" y1="28" x2="25" y2="28"/>
+        </svg>
+        <p>Your rendered markdown<br/>will appear here</p>
+      </div>
+      <div class="md-content" id="preview" style="display:none"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+  const editor = document.getElementById('editor');
+  const preview = document.getElementById('preview');
+  const emptyState = document.getElementById('emptyState');
+  const charCount = document.getElementById('charCount');
+  const wordCount = document.getElementById('wordCount');
+  const fileInput = document.getElementById('fileInput');
+  const dropZone = document.getElementById('dropZone');
+  const fileNameLabel = document.getElementById('fileNameLabel');
+
+  marked.setOptions({ breaks: true, gfm: true });
+
+  function render(md) {
+    if (!md.trim()) {
+      emptyState.style.display = 'flex';
+      preview.style.display = 'none';
+      return;
+    }
+    emptyState.style.display = 'none';
+    preview.style.display = 'block';
+    preview.innerHTML = marked.parse(md);
+  }
+
+  function updateStats(md) {
+    charCount.textContent = md.length.toLocaleString() + ' chars';
+    const words = md.trim() ? md.trim().split(/\s+/).length : 0;
+    wordCount.textContent = words.toLocaleString() + ' words';
+  }
+
+  editor.addEventListener('input', () => {
+    render(editor.value);
+    updateStats(editor.value);
+  });
+
+  // File input
+  fileInput.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (file) loadFile(file);
+  });
+
+  function loadFile(file) {
+    fileNameLabel.textContent = file.name;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      editor.value = ev.target.result;
+      render(editor.value);
+      updateStats(editor.value);
+    };
+    reader.readAsText(file);
+  }
+
+  // Drag & drop
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) loadFile(file);
+  });
+
+  function copyToClipboard() {
+    const html = preview.innerHTML;
+    if (!html) return;
+    navigator.clipboard.writeText(html).then(() => {
+      const btn = document.querySelector('.btn.primary');
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy HTML', 1800);
+    });
+  }
+
+  function clearAll() {
+    editor.value = '';
+    render('');
+    updateStats('');
+    fileNameLabel.textContent = '— no file loaded —';
+    fileInput.value = '';
+  }
+</script>
+</body>
+</html>
